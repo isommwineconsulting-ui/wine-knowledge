@@ -64,6 +64,76 @@ def ingest_pdf(link: PdfLink, dest_dir: Path) -> IngestResult:
     )
 
 
+def ingest_local_file(path: Path, *, upload: bool = True) -> IngestResult:
+    """Ingest a PDF already on disk. Idempotent via SHA-256 dedupe.
+
+    When ``upload`` is False the file is indexed in place without copying it to
+    Supabase Storage (storage_path stays null); useful for large local libraries.
+    """
+    label = str(path)
+    try:
+        info = downloader.inspect_local(path)
+    except Exception as exc:
+        return IngestResult(label, "error", f"read failed: {exc}")
+
+    existing = indexer.document_exists(info.sha256)
+    if existing:
+        return IngestResult(label, "skipped", "already indexed", document_id=existing)
+
+    try:
+        extracted = extractor.extract(path)
+    except Exception as exc:
+        return IngestResult(label, "error", f"extract failed: {exc}")
+
+    object_path = None
+    if upload:
+        try:
+            object_path = storage.upload_pdf(path, info.sha256, info.filename)
+        except Exception as exc:
+            return IngestResult(label, "error", f"upload failed: {exc}")
+
+    try:
+        document_id = indexer.index_document(
+            extracted=extracted,
+            pdf_url=path.resolve().as_uri(),
+            source_page_url="local-ingest",
+            storage_path=object_path,
+            sha256=info.sha256,
+            size_bytes=info.size_bytes,
+        )
+    except Exception as exc:
+        return IngestResult(label, "error", f"index failed: {exc}")
+
+    return IngestResult(
+        label, "indexed", f"{extracted.num_pages} pages", document_id=document_id
+    )
+
+
+def find_local_pdfs(target: Path, recursive: bool = True) -> list[Path]:
+    """Return PDF files under ``target`` (a file or directory)."""
+    if target.is_file():
+        return [target] if target.suffix.lower() == ".pdf" else []
+    pattern = "**/*.pdf" if recursive else "*.pdf"
+    return sorted(p for p in target.glob(pattern) if p.is_file())
+
+
+def ingest_local(
+    target: Path,
+    *,
+    recursive: bool = True,
+    upload: bool = True,
+    on_result: Callable[[IngestResult], None] | None = None,
+) -> list[IngestResult]:
+    """Ingest a local PDF file or every PDF in a directory."""
+    results: list[IngestResult] = []
+    for pdf_path in find_local_pdfs(target, recursive=recursive):
+        result = ingest_local_file(pdf_path, upload=upload)
+        results.append(result)
+        if on_result:
+            on_result(result)
+    return results
+
+
 def scrape_and_ingest(
     seed_url: str,
     *,

@@ -49,6 +49,11 @@ python -m wine_knowledge scrape "https://example.com/wine-library"
 # Crawl same-domain links two levels deep, cap at 20 PDFs
 python -m wine_knowledge scrape "https://example.com/library" --crawl-depth 2 --max-pdfs 20
 
+# Index PDFs you already have on disk (no scraping/network needed)
+python -m wine_knowledge ingest ./my-wine-books            # a folder (recursive)
+python -m wine_knowledge ingest ./book.pdf                 # a single file
+python -m wine_knowledge ingest ./big-library --no-upload  # index in place, don't copy to Storage
+
 # Full-text search the index
 python -m wine_knowledge search "tannin structure in aged Bordeaux"
 
@@ -56,6 +61,9 @@ python -m wine_knowledge search "tannin structure in aged Bordeaux"
 python -m wine_knowledge list
 python -m wine_knowledge stats
 ```
+
+Both `scrape` and `ingest` feed the same store → extract → index → search
+pipeline and dedupe by SHA-256, so re-running is safe and idempotent.
 
 ## Configuration (`.env`)
 

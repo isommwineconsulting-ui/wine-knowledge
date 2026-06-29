@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from wine_knowledge.downloader import filename_from_url
+from wine_knowledge.downloader import filename_from_url, inspect_local
 from wine_knowledge.extractor import extract
+from wine_knowledge.pipeline import find_local_pdfs
 from wine_knowledge.indexer import _derive_tags
 from wine_knowledge.extractor import ExtractedPdf
 from wine_knowledge.scraper import parse_links
@@ -87,6 +88,32 @@ def test_derive_tags_picks_keywords() -> None:
     assert "bordeaux" in tags
     assert "terroir" in tags
     assert "tannin" in tags
+
+
+def test_inspect_local_and_find_pdfs(tmp_path: Path) -> None:
+    pdf = tmp_path / "sub" / "Burgundy Notes.pdf"
+    pdf.parent.mkdir(parents=True)
+    pdf.write_bytes(_build_minimal_pdf("Burgundy pinot noir"))
+    (tmp_path / "notes.txt").write_text("not a pdf")
+
+    info = inspect_local(pdf)
+    assert info.filename == "Burgundy Notes.pdf"
+    assert len(info.sha256) == 64
+    assert info.size_bytes == pdf.stat().st_size
+
+    # Directory walk finds only the PDF, recursively.
+    found = find_local_pdfs(tmp_path, recursive=True)
+    assert found == [pdf]
+    assert find_local_pdfs(tmp_path, recursive=False) == []
+
+
+def test_inspect_local_rejects_non_pdf(tmp_path: Path) -> None:
+    import pytest
+
+    bad = tmp_path / "fake.pdf"
+    bad.write_bytes(b"not really a pdf")
+    with pytest.raises(ValueError):
+        inspect_local(bad)
 
 
 def test_storage_path_and_filename() -> None:

@@ -73,6 +73,53 @@ def scrape(
 
 
 @app.command()
+def ingest(
+    path: Path = typer.Argument(
+        ..., exists=True, help="A PDF file or a folder of PDFs to index."
+    ),
+    recursive: bool = typer.Option(
+        True, "--recursive/--no-recursive", help="Recurse into subfolders."
+    ),
+    upload: bool = typer.Option(
+        True,
+        "--upload/--no-upload",
+        help="Copy files into Supabase Storage (off = index in place).",
+    ),
+) -> None:
+    """Index wine PDFs you already have on disk — no scraping required."""
+    from .pipeline import ingest_local
+
+    def on_result(result) -> None:
+        color = {
+            "indexed": typer.colors.GREEN,
+            "skipped": typer.colors.YELLOW,
+            "error": typer.colors.RED,
+        }.get(result.status, typer.colors.WHITE)
+        typer.secho(f"  [{result.status:>7}] {result.pdf_url}  {result.detail}", fg=color)
+
+    try:
+        results = ingest_local(
+            path, recursive=recursive, upload=upload, on_result=on_result
+        )
+    except ConfigError as exc:
+        _fail(str(exc))
+        return
+
+    if not results:
+        typer.secho("No PDF files found.", fg=typer.colors.YELLOW)
+        raise typer.Exit()
+
+    indexed = sum(1 for r in results if r.status == "indexed")
+    skipped = sum(1 for r in results if r.status == "skipped")
+    errors = sum(1 for r in results if r.status == "error")
+    typer.secho(
+        f"\nDone: {indexed} indexed, {skipped} skipped, {errors} error(s).",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
+
+
+@app.command()
 def search(
     query: str = typer.Argument(..., help="Full-text query."),
     limit: int = typer.Option(10, "--limit", "-l", help="Max results."),

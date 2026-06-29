@@ -27,6 +27,27 @@ def filename_from_url(url: str) -> str:
     return name or "document.pdf"
 
 
+def inspect_local(path: Path) -> DownloadedFile:
+    """Hash and size an existing local PDF, validating its magic bytes."""
+    with path.open("rb") as fh:
+        header = fh.read(len(PDF_MAGIC))
+        if header != PDF_MAGIC:
+            raise ValueError(f"{path} is not a PDF (bad magic bytes).")
+        hasher = hashlib.sha256()
+        hasher.update(header)
+        size = len(header)
+        for chunk in iter(lambda: fh.read(65536), b""):
+            hasher.update(chunk)
+            size += len(chunk)
+
+    return DownloadedFile(
+        path=path,
+        sha256=hasher.hexdigest(),
+        size_bytes=size,
+        filename=path.name,
+    )
+
+
 def download(url: str, dest_dir: Path) -> DownloadedFile:
     """Stream ``url`` to ``dest_dir``, returning path/hash/size.
 
