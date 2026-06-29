@@ -1,0 +1,15 @@
+# Secrets / local config
+.env
+
+# Downloaded PDFs and scratch data
+downloads/
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
