@@ -26,12 +26,6 @@ def ingest_pdf(link: PdfLink, dest_dir: Path) -> IngestResult:
     except Exception as exc:  # network error, not-a-pdf, etc.
         return IngestResult(link.pdf_url, "error", f"download failed: {exc}")
 
-    existing = indexer.document_exists(downloaded.sha256)
-    if existing:
-        return IngestResult(
-            link.pdf_url, "skipped", "already indexed", document_id=existing
-        )
-
     try:
         extracted = extractor.extract(downloaded.path)
     except Exception as exc:
@@ -75,10 +69,6 @@ def ingest_local_file(path: Path, *, upload: bool = True) -> IngestResult:
         info = downloader.inspect_local(path)
     except Exception as exc:
         return IngestResult(label, "error", f"read failed: {exc}")
-
-    existing = indexer.document_exists(info.sha256)
-    if existing:
-        return IngestResult(label, "skipped", "already indexed", document_id=existing)
 
     try:
         extracted = extractor.extract(path)
