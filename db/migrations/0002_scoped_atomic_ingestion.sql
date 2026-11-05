@@ -21,13 +21,14 @@ DROP POLICY IF EXISTS pdf_pages_owner_read ON public.pdf_pages;
 
 CREATE POLICY pdf_documents_owner_read ON public.pdf_documents
   FOR SELECT TO authenticated
-  USING (owner_id = (select auth.uid()));
+  USING (owner_id = (select auth.uid()) AND status = 'indexed');
 
 CREATE POLICY pdf_pages_owner_read ON public.pdf_pages
   FOR SELECT TO authenticated
   USING (EXISTS (
     SELECT 1 FROM public.pdf_documents d
     WHERE d.id = document_id AND d.owner_id = (select auth.uid())
+      AND d.status = 'indexed'
   ));
 
 -- Do not rely on the definer's privileges to bypass document ownership.
@@ -45,7 +46,7 @@ AS $fn$
     ts_rank(p.content_tsv, websearch_to_tsquery('english', query))
   FROM public.pdf_pages p
   JOIN public.pdf_documents d ON d.id = p.document_id
-  WHERE d.owner_id = auth.uid()
+  WHERE d.owner_id = auth.uid() AND d.status = 'indexed'
     AND p.content_tsv @@ websearch_to_tsquery('english', query)
   ORDER BY 6 DESC
   LIMIT LEAST(GREATEST(max_results, 1), 100);
@@ -54,7 +55,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.search_pdf_library(text, integer)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.search_pdf_library(text, integer)
-  TO authenticated;
+  TO authenticated, service_role;
 GRANT SELECT ON public.pdf_documents, public.pdf_pages TO authenticated;
 
 -- One RPC call = one DB transaction; all derived page rows and catalog state
@@ -89,6 +90,10 @@ BEGIN
      OR cardinality(p_pages) = 0 OR p_pdf_url IS NULL
   THEN
     RAISE EXCEPTION 'invalid ingestion input' USING ERRCODE = '22023';
+  END IF;
+  -- Require a real authenticated owner, not merely any well-formed UUID.
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_owner_id) THEN
+    RAISE EXCEPTION 'unknown owner' USING ERRCODE = '22023';
   END IF;
   -- Require extractable text; otherwise record requires separate review.
   SELECT count(*) INTO v_expected FROM unnest(p_pages) AS u(page_text)
