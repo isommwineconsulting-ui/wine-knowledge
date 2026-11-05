@@ -29,6 +29,8 @@ def test_atomic_ingest_and_privilege() -> None:
     assert 'client.rpc(\n        "ingest_pdf_document"' in INDEXER
     assert "client.table(\"pdf_documents\").insert(" not in INDEXER
     assert "indexer.document_exists(" not in PIPELINE
+    assert "\"p_topic_tags\": _derive_tags(extracted)" in INDEXER
+    assert "coalesce(p_topic_tags" in MIGRATION
 
 
 def test_owner_configuration_fail_closed() -> None:
