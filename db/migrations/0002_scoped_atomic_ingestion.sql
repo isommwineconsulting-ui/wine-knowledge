@@ -69,7 +69,8 @@ CREATE OR REPLACE FUNCTION public.ingest_pdf_document(
   p_storage_path text,
   p_sha256 text,
   p_file_size_bytes bigint,
-  p_pages text[]
+  p_pages text[],
+  p_topic_tags text[]
 )
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER
@@ -119,11 +120,11 @@ BEGIN
 
   INSERT INTO public.pdf_documents
     (owner_id, title, author, source_page_url, pdf_url, storage_path,
-     file_sha256, file_size_bytes, num_pages, status, scraped_at)
+     file_sha256, file_size_bytes, num_pages, topic_tags, status, scraped_at)
   VALUES
     (p_owner_id, p_title, p_author, p_source_page_url, p_pdf_url,
      p_storage_path, p_sha256, p_file_size_bytes, cardinality(p_pages),
-     'indexing', now())
+     COALESCE(p_topic_tags, ARRAY[]::text[]), 'indexing', now())
   RETURNING id INTO v_id;
 
   INSERT INTO public.pdf_pages(document_id, page_number, content)
@@ -140,8 +141,8 @@ BEGIN
 END;
 $fn$;
 
-REVOKE ALL ON FUNCTION public.ingest_pdf_document(uuid,text,text,text,text,text,text,bigint,text[])
+REVOKE ALL ON FUNCTION public.ingest_pdf_document(uuid,text,text,text,text,text,text,bigint,text[],text[])
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.ingest_pdf_document(uuid,text,text,text,text,text,text,bigint,text[])
+GRANT EXECUTE ON FUNCTION public.ingest_pdf_document(uuid,text,text,text,text,text,text,bigint,text[],text[])
   TO service_role;
 COMMIT;
