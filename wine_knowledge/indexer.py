@@ -66,6 +66,7 @@ def index_document(
             "p_sha256": sha256,
             "p_file_size_bytes": size_bytes,
             "p_pages": extracted.pages,
+            "p_topic_tags": _derive_tags(extracted),
         },
     ).execute()
     if not result.data:
