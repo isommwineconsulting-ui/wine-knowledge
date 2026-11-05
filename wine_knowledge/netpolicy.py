@@ -45,3 +45,28 @@ def validated_redirect(current: str, location: str, allowed_hosts: tuple[str, ..
     if not location:
         raise ValueError("Redirect missing Location")
     return validate_source_url(urljoin(current, location), allowed_hosts)
+
+
+def bounded_text_fetch(client, url: str, allowed_hosts: tuple[str, ...],
+                       max_bytes: int, expected_type: str) -> str:
+    """Read bounded text, validating every redirect and destination."""
+    current = validate_source_url(url, allowed_hosts)
+    for _ in range(MAX_REDIRECTS + 1):
+        with client.stream("GET", current) as response:
+            if response.status_code in (301, 302, 303, 307, 308):
+                current = validated_redirect(current, response.headers.get("location", ""),
+                                             allowed_hosts)
+                continue
+            response.raise_for_status()
+            if expected_type not in response.headers.get("content-type", "").lower():
+                raise ValueError("Unexpected content type")
+            length = response.headers.get("content-length")
+            if length and int(length) > max_bytes:
+                raise ValueError("Response exceeds configured byte limit")
+            data = bytearray()
+            for chunk in response.iter_bytes(chunk_size=65536):
+                data.extend(chunk)
+                if len(data) > max_bytes:
+                    raise ValueError("Response exceeds configured byte limit")
+            return data.decode(response.encoding or "utf-8", errors="replace")
+    raise ValueError("Too many redirects")
