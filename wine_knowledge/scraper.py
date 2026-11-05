@@ -15,6 +15,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .config import get_settings
+from .netpolicy import bounded_text_fetch, validate_source_url
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,8 @@ class Scraper:
         self.respect_robots = respect_robots
         self._client = httpx.Client(
             headers={"User-Agent": self.settings.user_agent},
-            follow_redirects=True,
+            follow_redirects=False,
+            trust_env=False,
             timeout=30.0,
         )
         self._robots: dict[str, RobotFileParser] = {}
@@ -81,6 +83,8 @@ class Scraper:
         self.close()
 
     def _allowed(self, url: str) -> bool:
+        # The policy applies even when robots enforcement is disabled.
+        validate_source_url(url, self.settings.allowed_hosts)
         if not self.respect_robots:
             return True
         parsed = urlparse(url)
@@ -90,29 +94,27 @@ class Scraper:
             rp = RobotFileParser()
             rp.set_url(urljoin(base, "/robots.txt"))
             try:
-                rp.read()
-            except Exception:
-                # If robots.txt cannot be read, default to allowing.
-                rp = RobotFileParser()
-                rp.parse([])
+                data = bounded_text_fetch(
+                    self._client, rp.url, self.settings.allowed_hosts,
+                    self.settings.max_html_bytes, "text/plain",
+                )
+                rp.parse(data.splitlines())
+            except (httpx.HTTPError, ValueError):
+                # No clear robots permission: do not crawl.
+                return False
             self._robots[base] = rp
-        try:
-            return rp.can_fetch(self.settings.user_agent, url)
-        except Exception:
-            return True
+        return rp.can_fetch(self.settings.user_agent, url)
 
     def _get_html(self, url: str) -> str | None:
-        if not self._allowed(url):
-            return None
         try:
-            resp = self._client.get(url)
-        except httpx.HTTPError:
+            if not self._allowed(url):
+                return None
+            return bounded_text_fetch(
+                self._client, url, self.settings.allowed_hosts,
+                self.settings.max_html_bytes, "text/html",
+            )
+        except (httpx.HTTPError, ValueError):
             return None
-        if resp.status_code != 200:
-            return None
-        if "text/html" not in resp.headers.get("content-type", ""):
-            return None
-        return resp.text
 
     def find_pdfs(self, seed_url: str, crawl_depth: int = 0) -> list[PdfLink]:
         """Return de-duplicated PDF links reachable from ``seed_url``.
