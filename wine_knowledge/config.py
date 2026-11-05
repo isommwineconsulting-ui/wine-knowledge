@@ -26,6 +26,7 @@ class Settings:
     bucket: str
     user_agent: str
     request_delay_seconds: float
+    owner_id: str
 
 
 class ConfigError(RuntimeError):
@@ -57,6 +58,13 @@ def get_settings() -> Settings:
     except ValueError:
         delay = 1.0
 
+    owner_id = os.environ.get("WINE_PDF_OWNER_ID", "").strip()
+    import uuid
+    try:
+        owner_id = str(uuid.UUID(owner_id))
+    except (ValueError, AttributeError):
+        raise ConfigError("WINE_PDF_OWNER_ID must be a valid authorized user UUID")
+
     return Settings(
         supabase_url=url,
         supabase_service_role_key=key,
@@ -64,6 +72,7 @@ def get_settings() -> Settings:
         user_agent=os.environ.get("WINE_SCRAPER_USER_AGENT", DEFAULT_USER_AGENT).strip()
         or DEFAULT_USER_AGENT,
         request_delay_seconds=delay,
+        owner_id=owner_id,
     )
 
 
