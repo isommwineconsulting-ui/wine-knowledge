@@ -27,6 +27,9 @@ class Settings:
     user_agent: str
     request_delay_seconds: float
     owner_id: str
+    allowed_hosts: tuple[str, ...]
+    max_pdf_bytes: int
+    max_html_bytes: int
 
 
 class ConfigError(RuntimeError):
@@ -65,6 +68,19 @@ def get_settings() -> Settings:
     except (ValueError, AttributeError):
         raise ConfigError("WINE_PDF_OWNER_ID must be a valid authorized user UUID")
 
+    allowed_hosts = tuple(sorted({
+        h.strip().lower().rstrip(".")
+        for h in os.environ.get("WINE_ALLOWED_HOSTS", "").split(",")
+        if h.strip()
+    }))
+    try:
+        max_pdf_bytes = int(os.environ.get("WINE_MAX_PDF_BYTES", "52428800"))
+        max_html_bytes = int(os.environ.get("WINE_MAX_HTML_BYTES", "2097152"))
+        if not (0 < max_pdf_bytes <= 209715200 and 0 < max_html_bytes <= 10485760):
+            raise ValueError("out of bounds")
+    except ValueError:
+        raise ConfigError("Invalid WINE_MAX_PDF_BYTES or WINE_MAX_HTML_BYTES")
+
     return Settings(
         supabase_url=url,
         supabase_service_role_key=key,
@@ -73,6 +89,9 @@ def get_settings() -> Settings:
         or DEFAULT_USER_AGENT,
         request_delay_seconds=delay,
         owner_id=owner_id,
+        allowed_hosts=allowed_hosts,
+        max_pdf_bytes=max_pdf_bytes,
+        max_html_bytes=max_html_bytes,
     )
 
 
