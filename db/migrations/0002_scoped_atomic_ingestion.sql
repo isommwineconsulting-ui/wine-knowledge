@@ -91,8 +91,8 @@ BEGIN
     RAISE EXCEPTION 'invalid ingestion input' USING ERRCODE = '22023';
   END IF;
   -- Require extractable text; otherwise record requires separate review.
-  SELECT count(*) INTO v_expected FROM unnest(p_pages) AS x
-    WHERE x IS NOT NULL AND btrim(x) <> '';
+  SELECT count(*) INTO v_expected FROM unnest(p_pages) AS u(page_text)
+    WHERE page_text IS NOT NULL AND btrim(page_text) <> '';
   IF v_expected = 0 THEN
     RAISE EXCEPTION 'no extractable text' USING ERRCODE = '22023';
   END IF;
